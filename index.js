@@ -1,64 +1,77 @@
+const tf = require('@tensorflow/tfjs-node');
 const express = require('express');
-const multer = require('multer');
+const startModel = require('./initiateModelTraining');
 
 const app = express();
-const upload = multer({ dest: 'uploads/' });
+// Load the saved model
+const MODEL_PATH = 'gan_model/model.json';
 
-// Set up any necessary middleware, routes, etc.
-// ...
-const tf = require('@tensorflow/tfjs');
-const fs = require('fs');
-
-// Load the trained generator model
-async function loadGeneratorModel(modelPath) {
-  const model = await tf.loadLayersModel(`file://${modelPath}`);
-  return model;
-}
-
-// Generate an image from text input
-async function generateImage(textInput, generatorModel) {
-  // Preprocess the text input if required
-
-  // Generate the image
-  const latentVector = generateLatentVector();
-  const generatedImage = generatorModel.predict(latentVector);
-
-  // Convert the generated image tensor to a buffer
-  const imageBuffer = await generatedImageToBuffer(generatedImage);
-
-  // Save the image buffer or send it as a response
-  fs.writeFileSync('generated_image.jpg', imageBuffer);
-}
-
-// Generate a random latent vector
-function generateLatentVector() {
-  // Generate a random tensor as the latent vector
-  const latentVector = tf.randomNormal([1, latentVectorSize]);
-  return latentVector;
-}
-
-// Convert the generated image tensor to a buffer
-async function generatedImageToBuffer(generatedImage) {
-  // Convert the generated image tensor to a Uint8Array
-  const imageArray = await generatedImage.data();
-  const uintArray = new Uint8Array(imageArray.length);
-  for (let i = 0; i < imageArray.length; i++) {
-    uintArray[i] = Math.round(imageArray[i] * 255);
+app.get('/generate', async (req, res) => {
+    const prompt = req.query.prompt;
+  
+    try {
+      // Load the trained model
+      const model = await tf.loadLayersModel(`file://${MODEL_PATH}`);
+  
+      // Preprocess the prompt if needed
+      const preprocessedPrompt = preprocessText(prompt);
+  
+      // Pad the prompt to the desired length
+      const paddedPrompt = padPrompt(preprocessedPrompt, 100);
+  
+      // Convert the padded prompt to numeric values
+      const input = tf.tensor2d([paddedPrompt.split('').map(char => char.charCodeAt(0))], [1, 100]);
+  console.log(input)
+      // Generate the answer using the model
+      const output = model.predict(input);
+  console.log(output)
+      // Decode and send the generated answer
+      const generatedText = decodeText(output);
+      res.send(generatedText);
+    } catch (error) {
+      console.error('Error generating answer:', error);
+      res.status(500).send('Error generating answer');
+    }
+  });
+  
+  // Preprocess the text (lowercase, remove punctuation, etc.)
+  function preprocessText(text) {
+    // Implement your preprocessing logic here
+    // For example:
+    const preprocessedText = text.toLowerCase().replace(/[^\w\s]/g, '');
+    return preprocessedText;
   }
+  
+  // Pad the prompt to a specified length
+  function padPrompt(prompt, length) {
+    if (prompt.length >= length) {
+      return prompt.slice(0, length);
+    } else {
+      return prompt.padEnd(length, ' ');
+    }
+  }
+  
+  
+  // Decode the generated text from the model's output
+  function decodeText(output) {
+    // Implement your decoding logic here
+    // Convert the tensor output to a readable string
+    const decodedText = output.dataSync().toString();
+    return decodedText;
+  }
+  
 
-  // Create a buffer from the Uint8Array
-  const buffer = Buffer.from(uintArray.buffer);
-
-  return buffer;
-}
-
-// Load the generator model
-const generatorModelPath = 'models/generator_epoch10.json'; // Provide the path to your saved generator model
-const generatorModel = await loadGeneratorModel(generatorModelPath);
-
-// Generate an image from text input
-const textInput = 'Generate an image from this text';
-await generateImage(textInput, generatorModel);
-
-
+setInterval(() => {
     
+    startModel();
+}, 1000);
+  
+  
+  
+  
+  
+
+// Start the server
+app.listen(3000, () => {
+  console.log('Server is running on port 3000');
+});

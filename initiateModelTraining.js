@@ -1,30 +1,26 @@
 const tf = require('@tensorflow/tfjs-node');
 const trainingData = require('./assets/trainingData');
-const fs = require('fs');
-const path = require('path');
+
 // Define the GAN model architecture
 // Define the GAN model architecture using the functional API
 function defineGANModel() {
   const noiseSize = 100; // Size of the input noise vector
-  const imageSize = 256; // Placeholder value, replace with the actual image size
   const numChannels = 3; // Number of color channels in the image
 
   // Define the generator model
   const generatorInput = tf.input({ shape: [noiseSize] });
-  const generatorOutput = tf.layers.dense({ units: imageSize * imageSize * numChannels, activation: 'relu' }).apply(generatorInput);
-  const generatorReshape = tf.layers.reshape({ targetShape: [imageSize, imageSize, numChannels] }).apply(generatorOutput);
-  const generator = tf.model({ inputs: generatorInput, outputs: generatorReshape });
+  const generatorOutput = tf.layers.dense({ units: numChannels, activation: 'relu' }).apply(generatorInput);
+  const generator = tf.model({ inputs: generatorInput, outputs: generatorOutput });
 
   // Define the discriminator model
-  const discriminatorInput = tf.input({ shape: [imageSize, imageSize, numChannels] });
-  const discriminatorFlatten = tf.layers.flatten().apply(discriminatorInput);
-  const discriminatorOutput = tf.layers.dense({ units: 1, activation: 'sigmoid' }).apply(discriminatorFlatten);
+  const discriminatorInput = tf.input({ shape: [numChannels] });
+  const discriminatorOutput = tf.layers.dense({ units: 1, activation: 'sigmoid' }).apply(discriminatorInput);
   const discriminator = tf.model({ inputs: discriminatorInput, outputs: discriminatorOutput });
 
   // Combine the generator and discriminator into a GAN model
   const ganInput = generatorInput;
-  const generatedImages = generator.apply(ganInput);
-  const ganOutput = discriminator.apply(generatedImages);
+  const generatedText = generator.apply(ganInput);
+  const ganOutput = discriminator.apply(generatedText);
   const gan = tf.model({ inputs: ganInput, outputs: ganOutput });
 
   return { gan, generator, discriminator };
@@ -32,19 +28,66 @@ function defineGANModel() {
 
 // Train the GAN model
 async function trainGANModel(gan, generator, discriminator, data) {
-  // Training code goes here
-}
-
-async function loadImageTensor(imagePath) {
-  // Load and preprocess the image
+    const numEpochs = 1000; // Specify the number of training epochs
+    const batchSize = 32; // Specify the batch size for training
+    const learningRate = 0.001; // Specify the learning rate for the optimizer
+    const noiseSize = 100; // Specify the size of the input noise vector
+    const ganOptimizer = tf.train.adam(learningRate);
+    const generatorOptimizer = tf.train.adam(learningRate);
+    const discriminatorOptimizer = tf.train.adam(learningRate);
   
-  const imageBuffer = await fs.promises.readFile(imagePath);
-  const imageTensor = tf.node.decodeImage(imageBuffer);
-
-  // Preprocess the image (e.g., resize, normalize, etc.)
-
-  return imageTensor;
-}
+     // Compile the models before training
+  gan.compile({
+    optimizer: tf.train.adam(),
+    loss: 'binaryCrossentropy',
+  });
+  generator.compile({
+    optimizer: tf.train.adam(),
+    loss: 'binaryCrossentropy',
+  });
+  discriminator.compile({
+    optimizer: tf.train.adam(),
+    loss: 'binaryCrossentropy',
+    metrics: ['accuracy'],
+  });
+    
+    for (let epoch = 1; epoch <= numEpochs; epoch++) {
+      // Perform one epoch of training
+      for (let i = 0; i < data.length; i += batchSize) {
+        const realDataBatch = data.slice(i, i + batchSize);
+        const noise = tf.randomNormal([batchSize, noiseSize]);
+  
+        // Train the discriminator
+        tf.tidy(() => {
+          const generatedDataBatch = generator.predict(noise);
+          const realLabels = tf.ones([batchSize, 1]);
+          const fakeLabels = tf.zeros([batchSize, 1]);
+  
+          const discriminatorLossReal = discriminator.trainOnBatch(realDataBatch, realLabels);
+          const discriminatorLossFake = discriminator.trainOnBatch(generatedDataBatch, fakeLabels);
+          const discriminatorLoss = discriminatorLossReal.add(discriminatorLossFake).div(tf.scalar(2));
+        });
+  
+        // Train the generator
+        tf.tidy(() => {
+          const generatedDataBatch = generator.predict(noise);
+          const ganLabels = tf.ones([batchSize, 1]);
+  
+          const ganLoss = gan.trainOnBatch(noise, ganLabels);
+        });
+  
+        tf.dispose([realDataBatch, noise]);
+      }
+  
+      console.log(`Epoch ${epoch}/${numEpochs} completed.`);
+    }
+  
+    // Save the trained models if needed
+    await gan.save('file://gan_model');
+    await generator.save('file://generator_model');
+    await discriminator.save('file://discriminator_model');
+  }
+  
 
 async function preprocessText(text) {
   // Perform any necessary preprocessing on the text
@@ -57,77 +100,41 @@ async function preprocessText(text) {
 }
 
 async function loadTrainingData() {
-  const data = [];
-  const numChannels = 3;
-  const desiredShape = [186, 256, numChannels]; // Update the desired shape based on your requirements
-
-  for (const sample of trainingData) {
-    try {
-      const imagePath = path.join(__dirname, sample.image);
-      const imageTensor = await loadImageTensor(imagePath);
-
-      const preprocessedText = await preprocessText(sample.text);
-
-      // Encode the preprocessed text as integers
-      const textEncoder = new TextEncoder();
-      const textEncoded = textEncoder.encode(preprocessedText);
-
-      const textTensor = tf.tensor(textEncoded, [textEncoded.length, 1], 'float32');
-
-      // Add a channel dimension to the image tensor
-      const imageTensorWithChannel = imageTensor.expandDims(2);
-
-      // Resize the image tensor to match the desired shape
-      const reshapedImageTensor = tf.image.resizeBilinear(imageTensorWithChannel, [desiredShape[0], desiredShape[1]]);
-
-      // Ensure the number of channels matches the desired shape
-      if (desiredShape[2] !== numChannels) {
-        // Convert image tensor to grayscale if necessary
-        reshapedImageTensor = tf.image.rgbToGrayscale(reshapedImageTensor);
+    const data = [];
+  
+    for (const sample of trainingData) {
+      try {
+        const preprocessedText = await preprocessText(sample);
+  
+        // Encode the preprocessed text as integers
+        const textEncoder = new TextEncoder();
+        const textEncoded = textEncoder.encode(preprocessedText);
+  
+        // Create a tensor from the encoded text
+        const textTensor = tf.tensor(textEncoded, [textEncoded.length, 1], 'float32');
+  
+        data.push(textTensor);
+      } catch (error) {
+        console.error(`Error processing sample: ${sample}`);
+        console.error(error);
       }
-
-      // Resize the text tensor to match the desired shape
-      const reshapedTextTensor = tf.image.resizeBilinear(textTensor, [desiredShape[0], 1]);
-
-      // Concatenate the tensors along the last dimension
-      const combinedTensor = tf.concat([reshapedImageTensor, reshapedTextTensor], -1);
-
-      // Add the combined tensor to the data array
-      data.push(combinedTensor);
-    } catch (error) {
-      console.error(`Error processing sample: ${sample.image}`);
-      console.error(error);
     }
+  
+    // Concatenate the text tensors along a new axis
+    const concatenatedData = tf.concat(data, 0);
+  
+    return concatenatedData;
   }
-
-  return data;
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+  
 
 async function startModel() {
   const noiseSize = 100; // Size of the input noise vector
   const data = await loadTrainingData(); // Load and preprocess the training data
-  const { gan, generator, discriminator } =  defineGANModel();
+  const { gan, generator, discriminator } = defineGANModel();
   await trainGANModel(gan, generator, discriminator, data);
   console.log('GAN model training complete!');
 }
 
-startModel();
+
+
+module.exports=startModel

@@ -4,8 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start":"node index.js",
-    "train":"node initiateModelTraining.js",
+    "start": "nodemon index.js",
+    "train": "nodemon initiateModelTraining.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -13,9 +13,14 @@
   "license": "ISC",
   "dependencies": {
     "@tensorflow/tfjs": "^4.7.0",
+    "@tensorflow/tfjs-node": "^4.7.0",
+    "cors": "^2.8.5",
     "express": "^4.18.2",
     "install": "^0.13.0",
     "multer": "^1.4.5-lts.1",
     "npm": "^9.7.1"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.22"
   }
 }
