@@ -1,6 +1,7 @@
 # Maria - Generative AI Model and Tools
 
-![20230603_155227_0003](https://github.com/Monyble/Maria/assets/54072018/c111ab92-d8f2-478f-ae72-a69192fe16cd)
+<img width="247" alt="Maria" src="https://github.com/Monyble/Maria/assets/54072018/f3c5a713-83c6-4659-8c9f-157ce6dc0880">
+
 
 Maria is an innovative project aimed at developing a powerful generative AI model and a suite of accompanying tools. The project explores the capabilities of artificial intelligence in generating captivating content across various domains, including images, music, and text.
 
